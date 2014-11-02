@@ -58,6 +58,13 @@ public class StartActivity extends Activity {
                 startActivityForResult(getWalletLocation, GET_CAR_LOCATION);
             }
         });
+        mMonitorButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent i = new Intent(StartActivity.this, LocationService.class);
+                startService(i);
+            }
+        });
     }
 
     @Override

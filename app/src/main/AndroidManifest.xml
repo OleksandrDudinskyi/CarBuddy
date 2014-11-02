@@ -36,5 +36,6 @@
         </activity>
         <activity
             android:name="com.dudinskyi.carbuddy.MapsActivity"/>
+        <service android:enabled="true" android:name=".LocationService" />
     </application>
 </manifest>
