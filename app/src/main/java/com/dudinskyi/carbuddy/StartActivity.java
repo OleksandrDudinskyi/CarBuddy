@@ -1,8 +1,10 @@
 package com.dudinskyi.carbuddy;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -19,6 +21,8 @@ import com.google.android.gms.maps.model.LatLng;
 public class StartActivity extends Activity {
     public static final String MARKER_TITLE = "MARKER_TITLE";
     public static final String MARKER_POSITION = "MARKER_POSITION";
+    public static final String WALLET_POSITION = "WALLET_POSITION";
+    public static final String CAR_POSITION = "CAR_POSITION";
     private Button mWalletLocationButton;
     private Button mCarLocationButton;
     private Button mMonitorButton;
@@ -62,7 +66,31 @@ public class StartActivity extends Activity {
             @Override
             public void onClick(View v) {
                 Intent i = new Intent(StartActivity.this, LocationService.class);
-                startService(i);
+                if (mWalletLatLng == null) {
+                    new AlertDialog.Builder(StartActivity.this)
+                            .setTitle("No wallet location defined")
+                            .setMessage("Please select wallet location")
+                            .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                                public void onClick(DialogInterface dialog, int which) {
+                                    // continue with delete
+                                }
+                            })
+                            .show();
+                } else if (mCarLatLng == null){
+                    new AlertDialog.Builder(StartActivity.this)
+                            .setTitle("No car location defined")
+                            .setMessage("Please select car location")
+                            .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                                public void onClick(DialogInterface dialog, int which) {
+                                    // continue with delete
+                                }
+                            })
+                            .show();
+                } else {
+                    i.putExtra(WALLET_POSITION, mWalletLatLng);
+                    i.putExtra(CAR_POSITION, mCarLatLng);
+                    startService(i);
+                }
             }
         });
     }

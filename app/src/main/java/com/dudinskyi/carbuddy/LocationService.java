@@ -5,10 +5,14 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.location.Criteria;
 import android.location.GpsStatus;
 import android.location.GpsStatus.Listener;
+import android.location.Location;
 import android.location.LocationManager;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -19,6 +23,8 @@ import android.os.Process;
 import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
+
+import com.google.android.gms.maps.model.LatLng;
 
 /**
  * Oleksandr Dudinskyi (dudinskyj@gmail.com)
@@ -31,8 +37,11 @@ public class LocationService extends Service {
     private int NOTIFICATION = R.string.local_service_started;
     private LocationManager mgr;
     private long last_time;
-    private Locationer gps_locationer, network_locationer;
+    private LocationDetector gps_locationer, network_locationer;
     private Notification.Builder builder;
+    private LatLng mWalletLatLng;
+    private LatLng mCarLatLng;
+    private static final String LOCATION_RECEIVE_BRODCAST = "com.dudinskyi.carbuddy";
 
     private static final String DEBUG_TAG = "LocationService";
 
@@ -45,8 +54,10 @@ public class LocationService extends Service {
         @Override
         public void handleMessage(Message msg) {
             mgr = (LocationManager) getSystemService(LOCATION_SERVICE);
-            gps_locationer = new Locationer(getBaseContext());
-            network_locationer = new Locationer(getBaseContext());
+            gps_locationer = new LocationDetector(getBaseContext(),
+                    (LatLng) msg.getData().getParcelable(StartActivity.CAR_POSITION));
+            network_locationer = new LocationDetector(getBaseContext(),
+                    (LatLng) msg.getData().getParcelable(StartActivity.CAR_POSITION));
 
             Criteria criteria = new Criteria();
             criteria.setAltitudeRequired(false);
@@ -72,9 +83,9 @@ public class LocationService extends Service {
     @Override
     public void onCreate() {
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        showNotification();
         HandlerThread thread = new HandlerThread("ServiceStartArguments", Process.THREAD_PRIORITY_BACKGROUND);
         thread.start();
+        registerReceiver(mMessageReceiver, new IntentFilter(LOCATION_RECEIVE_BRODCAST));
         mServiceLooper = thread.getLooper();
         mServiceHandler = new ServiceHandler(mServiceLooper);
     }
@@ -82,8 +93,11 @@ public class LocationService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Toast.makeText(this, "local service is started ", Toast.LENGTH_SHORT).show();
+        mWalletLatLng = intent.getExtras().getParcelable(StartActivity.WALLET_POSITION);
+        mCarLatLng = intent.getExtras().getParcelable(StartActivity.CAR_POSITION);
         Message msg = mServiceHandler.obtainMessage();
         msg.arg1 = startId;
+        msg.setData(intent.getExtras());
         mServiceHandler.sendMessage(msg);
         return START_STICKY;
     }
@@ -94,12 +108,15 @@ public class LocationService extends Service {
         mNotificationManager.cancel(NOTIFICATION);
         mgr.removeUpdates(gps_locationer);
         mgr.removeUpdates(network_locationer);
+        unregisterReceiver(mMessageReceiver);
         Toast.makeText(this, "local service is stopped", Toast.LENGTH_SHORT).show();
     }
 
 
     @Override
     public IBinder onBind(Intent intent) {
+        mWalletLatLng = intent.getExtras().getParcelable(StartActivity.WALLET_POSITION);
+        mCarLatLng = intent.getExtras().getParcelable(StartActivity.CAR_POSITION);
         return null;
     }
 
@@ -112,7 +129,7 @@ public class LocationService extends Service {
                 new Intent(this, StartActivity.class), 0);
 
         builder = new Notification.Builder(getBaseContext())
-                .setContentTitle("You are being tracked...")
+                .setContentTitle("You forgot your wallet")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentIntent(contentIntent)
@@ -159,4 +176,18 @@ public class LocationService extends Service {
         }
 
     }
+
+    // handler for received Intents for the "my-event" event
+    private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            float[] distance = new float[3];
+            Location.distanceBetween(mCarLatLng.latitude, mCarLatLng.longitude ,
+                    mWalletLatLng.latitude, mWalletLatLng.longitude, distance);
+            if (distance[0] > 2.0) {
+                showNotification();
+            }
+        }
+    };
+
 }

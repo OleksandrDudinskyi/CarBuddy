@@ -97,7 +97,11 @@ public class MapsActivity extends FragmentActivity implements GooglePlayServices
         if (getIntent().getExtras().containsKey(StartActivity.MARKER_POSITION)) {
             position = getIntent().getExtras().getParcelable(StartActivity.MARKER_POSITION);
         } else {
-           position =  new LatLng(mCurrentLocation.getLatitude(), mCurrentLocation.getLongitude());
+           if (mCurrentLocation != null) {
+               position = new LatLng(mCurrentLocation.getLatitude(), mCurrentLocation.getLongitude());
+           } else {
+               position = new LatLng(0.0, 0.0);
+           }
         }
         mMarker = mMap.addMarker(new MarkerOptions().position(position).title(markerTitle).draggable(true));
     }

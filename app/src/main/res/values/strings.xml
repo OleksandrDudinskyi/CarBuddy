@@ -3,6 +3,6 @@
 
     <string name="app_name">CarBuddy</string>
     <string name="title_activity_maps">CarBuddy</string>
-    <string name="local_service_started">Location tracking</string>
+    <string name="local_service_started">CarBuddy</string>
 
 </resources>

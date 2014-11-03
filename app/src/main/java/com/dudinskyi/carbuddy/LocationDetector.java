@@ -1,23 +1,29 @@
 package com.dudinskyi.carbuddy;
 
 import android.content.Context;
+import android.content.Intent;
 import android.location.Location;
 import android.location.LocationListener;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.util.Log;
 
-class Locationer implements LocationListener {
+import com.google.android.gms.maps.model.LatLng;
+
+/**
+ * @author Oleksandr Dudinskyi (dudinskyj@gmail.com)
+ */
+class LocationDetector implements LocationListener {
 
 	private Context ctx;
-	private long mLastLocationMillis;
+    private LatLng mCarLocation;
 
 	private static final String DEBUG_TAG = "Locationer";
 	private static final String[] Status = {"out of service", "temporarily unavailable", "available"};
 	private static final double ACCURACY_THRESHOLD = 100.0;
 	
-	public Locationer(Context context) {
+	public LocationDetector(Context context, LatLng carLocation) {
 		ctx = context;
+        mCarLocation = carLocation;
 	}
 	
 	@Override
@@ -25,8 +31,14 @@ class Locationer implements LocationListener {
         if ((location == null)||(location.getAccuracy() > ACCURACY_THRESHOLD)) {
         	return;
         }
-        mLastLocationMillis = SystemClock.elapsedRealtime();
-        
+        float[] result = new float[3];
+        Location.distanceBetween(location.getLatitude(), location.getLongitude(),
+                mCarLocation.latitude, mCarLocation.longitude, result);
+        float distanceToCar = result[0];
+        if (distanceToCar < 2.0) {
+            ctx.sendBroadcast(new Intent("com.dudinskyi.carbuddy"));
+        }
+
 	}
 
 	@Override
