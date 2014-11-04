@@ -1,12 +1,20 @@
 package com.dudinskyi.carbuddy;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.ServiceConnection;
+import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -23,23 +31,35 @@ public class StartActivity extends Activity {
     public static final String MARKER_POSITION = "MARKER_POSITION";
     public static final String WALLET_POSITION = "WALLET_POSITION";
     public static final String CAR_POSITION = "CAR_POSITION";
+    public static final String ACTION_GET_LOCATION = "ACTION_GET_LOCATION";
+    public static final String LOCATION_SERVICE_RECEIVER = "com.dudinskyi.carbuddy.startactivity";
     private Button mWalletLocationButton;
     private Button mCarLocationButton;
     private Button mMonitorButton;
     private LatLng mWalletLatLng;
     private LatLng mCarLatLng;
+    private LocationManager mlocManager;
     private static final int GET_WALLET_LOCATION = 1;
     private static final int GET_CAR_LOCATION = 2;
     private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(mMessageReceiver);
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.start_activity);
+        servicesConnected();
+        registerReceiver(mMessageReceiver, new IntentFilter(LOCATION_SERVICE_RECEIVER));
+        bindServiceIfRunning();
         mWalletLocationButton = (Button) findViewById(R.id.wallet_button);
         mCarLocationButton = (Button) findViewById(R.id.car_button);
         mMonitorButton = (Button) findViewById(R.id.monitor_button);
-        servicesConnected();
+        mlocManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         mWalletLocationButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -65,7 +85,6 @@ public class StartActivity extends Activity {
         mMonitorButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent i = new Intent(StartActivity.this, LocationService.class);
                 if (mWalletLatLng == null) {
                     new AlertDialog.Builder(StartActivity.this)
                             .setTitle("No wallet location defined")
@@ -76,7 +95,7 @@ public class StartActivity extends Activity {
                                 }
                             })
                             .show();
-                } else if (mCarLatLng == null){
+                } else if (mCarLatLng == null) {
                     new AlertDialog.Builder(StartActivity.this)
                             .setTitle("No car location defined")
                             .setMessage("Please select car location")
@@ -87,20 +106,70 @@ public class StartActivity extends Activity {
                             })
                             .show();
                 } else {
-                    i.putExtra(WALLET_POSITION, mWalletLatLng);
-                    i.putExtra(CAR_POSITION, mCarLatLng);
-                    startService(i);
+                    if (mlocManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                        startService();
+                    } else {
+                        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(StartActivity.this);
+                        alertDialogBuilder
+                                .setMessage("GPS is disabled in your device. Enable it?")
+                                .setCancelable(false)
+                                .setPositiveButton("Enable GPS",
+                                        new DialogInterface.OnClickListener() {
+                                            public void onClick(DialogInterface dialog,
+                                                                int id) {
+                                                Intent callGPSSettingIntent = new Intent(
+                                                        android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                                                startActivity(callGPSSettingIntent);
+                                            }
+                                        });
+                        alertDialogBuilder.setNegativeButton("Cancel",
+                                new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int id) {
+                                        dialog.cancel();
+                                    }
+                                });
+                        AlertDialog alert = alertDialogBuilder.create();
+                        alert.show();
+
+                    }
                 }
             }
         });
     }
 
+    private void startService() {
+        Intent startServiceIntent = new Intent(StartActivity.this, LocationService.class);
+        startServiceIntent.putExtra(WALLET_POSITION, mWalletLatLng);
+        startServiceIntent.putExtra(CAR_POSITION, mCarLatLng);
+        startService(startServiceIntent);
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (GET_WALLET_LOCATION  == requestCode && RESULT_OK == resultCode) {
+        if (GET_WALLET_LOCATION == requestCode && RESULT_OK == resultCode) {
             mWalletLatLng = data.getExtras().getParcelable(MapsActivity.POSITION);
-        } else if (GET_CAR_LOCATION  == requestCode && RESULT_OK == resultCode) {
+            if (mCarLatLng != null) {
+                if (isServiceRunning()) {
+                    Intent startServiceIntent = new Intent(StartActivity.this, LocationService.class);
+                    bindService(startServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
+                }
+            }
+        } else if (GET_CAR_LOCATION == requestCode && RESULT_OK == resultCode) {
             mCarLatLng = data.getExtras().getParcelable(MapsActivity.POSITION);
+            if (mWalletLatLng != null) {
+                Intent startServiceIntent = new Intent(StartActivity.this, LocationService.class);
+                if (isServiceRunning()) {
+                    bindService(startServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
+                }
+            }
+        }
+    }
+
+    private void bindServiceIfRunning() {
+        if (isServiceRunning()) {
+            Intent startServiceIntent = new Intent(StartActivity.this, LocationService.class);
+            startServiceIntent.setAction(ACTION_GET_LOCATION);
+            bindService(startServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
         }
     }
 
@@ -130,7 +199,7 @@ public class StartActivity extends Activity {
                 // Set the dialog in the DialogFragment
                 errorFragment.setDialog(errorDialog);
                 // Show the error dialog in the DialogFragment
-                errorFragment.show(getFragmentManager(),"Location Updates");
+                errorFragment.show(getFragmentManager(), "Location Updates");
             }
         }
         return false;
@@ -140,19 +209,60 @@ public class StartActivity extends Activity {
     public static class ErrorDialogFragment extends DialogFragment {
         // Global field to contain the error dialog
         private Dialog mDialog;
+
         // Default constructor. Sets the dialog field to null
         public ErrorDialogFragment() {
             super();
             mDialog = null;
         }
+
         // Set the dialog to display
         public void setDialog(Dialog dialog) {
             mDialog = dialog;
         }
+
         // Return a Dialog to the DialogFragment.
         @Override
         public Dialog onCreateDialog(Bundle savedInstanceState) {
             return mDialog;
         }
     }
+
+    private boolean isServiceRunning() {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (LocationService.class.getName().equals(service.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // handler for received Intents for the "my-event" event
+    private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null) {
+                Bundle bundle = intent.getExtras();
+                if (bundle.containsKey(StartActivity.WALLET_POSITION)) {
+                    mWalletLatLng = bundle.getParcelable(StartActivity.WALLET_POSITION);
+                }
+                if (bundle.containsKey(StartActivity.CAR_POSITION)) {
+                    mCarLatLng = intent.getExtras().getParcelable(StartActivity.CAR_POSITION);
+                }
+            }
+        }
+    };
+
+    /**
+     * Class for interacting with the main interface of the service.
+     */
+    private ServiceConnection mConnection = new ServiceConnection() {
+        public void onServiceConnected(ComponentName className,
+                                       IBinder service) {
+        }
+
+        public void onServiceDisconnected(ComponentName className) {
+        }
+    };
 }
